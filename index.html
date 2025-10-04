@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Study Planner</title>
+  <style>
+    :root{
+      --bg: #f7f9fc; --card:#ffffff; --muted:#6b7280; --accent:#374bee; --success:#10b981; --danger:#ef4444;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#fbfdff,#f3f6ff);color:#0f172a;padding:20px;display:flex;align-items:flex-start;justify-content:center}
+    .container{width:100%;max-width:1100px;background:var(--card);border-radius:12px;padding:18px;box-shadow:0 10px 30px rgba(15,23,42,0.06)}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    h1{margin:0;font-size:1.1rem}
+    p.lead{margin:0;color:var(--muted);font-size:0.9rem}
+
+    .layout{display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:14px}
+    @media(max-width:920px){.layout{grid-template-columns:1fr}}
+
+    /* Left: planner */
+    .planner{padding:12px}
+    .composer{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+    .row{display:flex;gap:8px}
+    .field, input, select, textarea{font-size:0.95rem}
+    input[type=text], input[type=datetime-local], textarea, select{padding:10px;border-radius:8px;border:1px solid #e6eef8;width:100%}
+    textarea{min-height:72px}
+    .btn{background:var(--accent);color:white;border:0;padding:10px 12px;border-radius:8px;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid rgba(55,75,238,0.12)}
+
+    .list{margin-top:8px;display:flex;flex-direction:column;gap:10px;max-height:58vh;overflow:auto;padding-right:6px}
+    .goal{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:10px;border:1px solid #f0f4f9}
+    .goal .meta{flex:1}
+    .goal h4{margin:0 0 6px 0;font-size:1rem}
+    .goal p{margin:0;color:var(--muted);font-size:0.9rem}
+    .goal .due{font-size:0.85rem;color:var(--muted);margin-top:6px}
+    .controls{display:flex;gap:8px}
+    .icon-btn{background:transparent;border:0;padding:8px;border-radius:8px;cursor:pointer}
+
+    /* Right: sidebar */
+    .side{padding:12px;border-left:1px dashed rgba(15,23,42,0.04)}
+    @media(max-width:920px){.side{border-left:none;border-top:1px dashed rgba(15,23,42,0.04);margin-top:12px;padding-top:12px}}
+
+    .progress{padding:12px;border-radius:10px;background:linear-gradient(180deg,rgba(55,75,238,0.03),rgba(6,182,212,0.02))}
+    .bar{height:12px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
+    .fill{height:100%;width:0;background:linear-gradient(90deg,#374bee,#06b6d4);transition:width 250ms}
+
+    .timeline{margin-top:12px}
+    .timeline .strip{display:flex;gap:10px;overflow:auto;padding:8px}
+    .day{min-width:160px;border-radius:10px;padding:10px;border:1px solid #f0f4f9;background:white}
+    .small{color:var(--muted);font-size:0.88rem}
+
+    .empty{padding:22px;border-radius:8px;text-align:center;color:var(--muted);border:1px dashed #e6eef8}
+
+    footer{display:flex;justify-content:space-between;margin-top:12px;color:var(--muted);font-size:0.85rem}
+  </style>
+</head>
+<body>
+  <div class="container" role="application" aria-label="Smart Study Planner">
+    <header>
+      <div>
+        <h1>Smart Study Planner</h1>
+        <p class="lead">Organize study goals, set reminders, and visualize your timeline — all stored locally.</p>
+      </div>
+      <div>
+        <button id="exportBtn" class="btn ghost">Export JSON</button>
+        <button id="importBtn" class="btn ghost">Import</button>
+        <input id="fileInput" type="file" accept="application/json" style="display:none" />
+      </div>
+    </header>
+
+    <div class="layout">
+      <main class="planner">
+        <section class="composer" aria-label="Create study goal">
+          <input id="title" type="text" placeholder="Goal title (e.g., Finish DBMS notes)" />
+          <textarea id="desc" placeholder="Short description (optional)"></textarea>
+          <div class="row">
+            <input id="due" type="datetime-local" />
+            <select id="priority">
+              <option value="normal">Normal priority</option>
+              <option value="high">High priority</option>
+              <option value="low">Low priority</option>
+            </select>
+          </div>
+          <div class="row" style="align-items:center">
+            <label style="display:flex;gap:8px;align-items:center"><input id="reminderToggle" type="checkbox" /> Enable reminder</label>
+            <input id="reminderOffset" type="number" min="1" value="60" style="width:120px" />
+            <span class="small">minutes before due</span>
+            <div style="margin-left:auto"><button id="addGoal" class="btn">Add Goal</button></div>
+          </div>
+        </section>
+
+        <section>
+          <h3 style="margin:6px 0">Planned Goals</h3>
+          <ul id="goalList" class="list" aria-label="Goals list"></ul>
+          <div id="emptyState" class="empty" style="display:none">No study goals yet — add one above ✨</div>
+        </section>
+      </main>
+
+      <aside class="side">
+        <div class="progress">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:700" id="percentText">0%</div>
+              <div class="small" id="progressText">0 of 0 completed</div>
+            </div>
+            <div>
+              <button id="clearCompleted" class="btn ghost">Clear done</button>
+            </div>
+          </div>
+          <div class="bar"><div id="fill" class="fill"></div></div>
+        </div>
+
+        <div class="timeline">
+          <h4 style="margin:8px 0">Upcoming timeline</h4>
+          <div id="timelineStrip" class="strip"></div>
+        </div>
+
+        <div style="margin-top:12px">
+          <h4 style="margin:6px 0">Tips</h4>
+          <p class="small">Enable browser notifications for reminders. Reminders fire while this page is open (or when notifications permission is granted).</p>
+        </div>
+      </aside>
+    </div>
+
+    <footer>
+      <div>Built by Rohit Kumar Guin •</div>
+      
+    </footer>
+  </div>
+
+  <script>
+    // ---------- Storage & State ----------
+    const KEY = 'smartstudy.planner.v1';
+    function load(){try{return JSON.parse(localStorage.getItem(KEY) || '[]')}catch(e){return []}}
+    function save(){localStorage.setItem(KEY, JSON.stringify(goals))}
+
+    function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+
+    let goals = load();
+
+    // ---------- DOM refs ----------
+    const title = document.getElementById('title');
+    const desc = document.getElementById('desc');
+    const due = document.getElementById('due');
+    const priority = document.getElementById('priority');
+    const reminderToggle = document.getElementById('reminderToggle');
+    const reminderOffset = document.getElementById('reminderOffset');
+    const addGoal = document.getElementById('addGoal');
+    const goalList = document.getElementById('goalList');
+    const emptyState = document.getElementById('emptyState');
+    const percentText = document.getElementById('percentText');
+    const progressText = document.getElementById('progressText');
+    const fill = document.getElementById('fill');
+    const timelineStrip = document.getElementById('timelineStrip');
+    const clearCompleted = document.getElementById('clearCompleted');
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const fileInput = document.getElementById('fileInput');
+
+    // For scheduled reminders while page is open
+    const scheduled = new Map();
+
+    // ---------- Rendering ----------
+    function render(){
+      goalList.innerHTML='';
+      if(goals.length===0) emptyState.style.display='block'; else emptyState.style.display='none';
+
+      goals.slice().sort((a,b)=> (a.priority==='high'? -1:1) - (b.priority==='high'? -1:1) || (a.due||0)-(b.due||0)).forEach(g=>{
+        const li=document.createElement('li');li.className='goal';li.dataset.id=g.id;
+        const chk=document.createElement('input');chk.type='checkbox';chk.checked=!!g.done;chk.addEventListener('change',()=>toggleDone(g.id));
+
+        const meta=document.createElement('div');meta.className='meta';
+        const h4=document.createElement('h4');h4.textContent=g.title + (g.priority==='high' ? ' • High' : '');
+        const p=document.createElement('p');p.textContent=g.desc||'';
+        const dueEl=document.createElement('div');dueEl.className='due small';
+        dueEl.textContent = g.due ? ('Due: ' + new Date(g.due).toLocaleString()) : 'No due date';
+        meta.appendChild(h4);meta.appendChild(p);meta.appendChild(dueEl);
+
+        const ctrls=document.createElement('div');ctrls.className='controls';
+        const edit=document.createElement('button');edit.className='icon-btn';edit.title='Edit';edit.innerHTML='✏️';edit.addEventListener('click',()=>startEdit(g.id));
+        const del=document.createElement('button');del.className='icon-btn';del.title='Delete';del.innerHTML='🗑️';del.addEventListener('click',()=>deleteGoal(g.id));
+        ctrls.appendChild(edit);ctrls.appendChild(del);
+
+        li.appendChild(chk);li.appendChild(meta);li.appendChild(ctrls);
+        goalList.appendChild(li);
+      });
+
+      updateProgress();
+      renderTimeline();
+      scheduleReminders();
+    }
+
+    function updateProgress(){
+      const total=goals.length; const done=goals.filter(g=>g.done).length;
+      const pct = total===0?0:Math.round((done/total)*100);
+      percentText.textContent = pct + '%';
+      progressText.textContent = `${done} of ${total} completed`;
+      fill.style.width = pct + '%';
+    }
+
+    function renderTimeline(){
+      timelineStrip.innerHTML='';
+      if(goals.length===0){timelineStrip.innerHTML='<div class="empty">No upcoming items</div>';return}
+      // group by day
+      const map = {};
+      goals.filter(g=>g.due).forEach(g=>{
+        const day = new Date(g.due).toISOString().slice(0,10);
+        map[day]=map[day]||[];map[day].push(g);
+      });
+      const days = Object.keys(map).sort();
+      if(days.length===0){timelineStrip.innerHTML='<div class="empty">No scheduled dates</div>';return}
+      days.forEach(d=>{
+        const card=document.createElement('div');card.className='day';
+        const dt=new Date(d);card.innerHTML = `<strong>${dt.toDateString()}</strong><div class="small" style="margin-top:6px">${map[d].length} item(s)</div>`;
+        map[d].forEach(g=>{
+          const li=document.createElement('div');li.className='small';li.style.marginTop='8px';
+          li.textContent = (g.done? '✓ ' : '') + (g.title.length>30? g.title.slice(0,30)+'...': g.title) + (g.priority==='high' ? ' [High]': '');
+          card.appendChild(li);
+        });
+        timelineStrip.appendChild(card);
+      });
+    }
+
+    // ---------- Actions ----------
+    function addNew(){
+      const t = title.value.trim(); if(!t) return alert('Enter a title');
+      const g = {id:uid(), title:t, desc:desc.value.trim(), due: due.value? new Date(due.value).getTime(): null, priority: priority.value, reminder: reminderToggle.checked, reminderOffset: Number(reminderOffset.value) || 60, done:false, createdAt:Date.now() };
+      goals.push(g); save(); render(); clearForm();
+    }
+    function clearForm(){title.value='';desc.value='';due.value='';priority.value='normal';reminderToggle.checked=false;reminderOffset.value=60}
+
+    function toggleDone(id){goals = goals.map(g=> g.id===id? {...g, done: !g.done} : g); save(); render();}
+
+    function startEdit(id){
+      const g = goals.find(x=>x.id===id); if(!g) return;
+      // populate form and switch to edit mode
+      title.value = g.title; desc.value = g.desc || ''; priority.value = g.priority || 'normal'; reminderToggle.checked = !!g.reminder; reminderOffset.value = g.reminderOffset || 60; if(g.due) due.value = new Date(g.due).toISOString().slice(0,16);
+      addGoal.textContent = 'Save Changes';
+      addGoal.dataset.edit = id;
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function saveEdit(id, data){
+      goals = goals.map(g=> g.id===id? {...g,...data} : g); save(); render();
+      addGoal.textContent='Add Goal'; delete addGoal.dataset.edit; clearForm();
+    }
+
+    function deleteGoal(id){ if(!confirm('Delete this goal?')) return; goals = goals.filter(g=>g.id!==id); save(); render(); }
+
+    function clearCompleted(){ const c = goals.filter(g=>g.done).length; if(c===0) return alert('No completed goals'); if(!confirm(`Remove ${c} completed?`)) return; goals = goals.filter(g=>!g.done); save(); render(); }
+
+    // ---------- Reminders (while page open) ----------
+    async function ensureNotificationPermission(){ if(!('Notification' in window)) return false; if(Notification.permission === 'granted') return true; if(Notification.permission !== 'denied') { const p = await Notification.requestPermission(); return p === 'granted'; } return false; }
+
+    function scheduleReminders(){
+      // clear existing timers
+      for(const id of scheduled.keys()){ clearTimeout(scheduled.get(id)); scheduled.delete(id); }
+      const now = Date.now();
+      goals.forEach(g=>{
+        if(!g.reminder || !g.due || g.done) return;
+        const when = g.due - ( (g.reminderOffset||60) * 60 * 1000 );
+        if(when <= now) return; // missed or immediate
+        const delay = when - now;
+        const timer = setTimeout(()=>{
+          notifyReminder(g);
+          scheduled.delete(g.id);
+        }, Math.min(delay, 2147483647)); // cap for setTimeout
+        scheduled.set(g.id, timer);
+      });
+    }
+
+    async function notifyReminder(g){
+      const has = await ensureNotificationPermission();
+      const title = `Reminder: ${g.title}`;
+      const body = g.desc ? g.desc.slice(0,200) : 'Upcoming study goal';
+      if(has) new Notification(title, {body}); else alert(`${title}\n\n${body}`);
+    }
+
+    // ---------- Import / Export ----------
+    exportBtn.addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(goals, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='smart-study-planner.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+    importBtn.addEventListener('click', ()=>fileInput.click());
+    fileInput.addEventListener('change', (e)=>{
+      const f = e.target.files && e.target.files[0]; if(!f) return; const reader = new FileReader(); reader.onload = ()=>{
+        try{ const imported = JSON.parse(reader.result); if(!Array.isArray(imported)) throw new Error('Invalid format'); goals = imported; save(); render(); alert('Imported successfully'); }catch(err){alert('Failed to import: '+err.message)}
+      }; reader.readAsText(f);
+    });
+
+    // ---------- Events ----------
+    addGoal.addEventListener('click', ()=>{
+      if(addGoal.dataset.edit){
+        const id = addGoal.dataset.edit; const data = { title: title.value.trim(), desc: desc.value.trim(), due: due.value? new Date(due.value).getTime(): null, priority: priority.value, reminder: reminderToggle.checked, reminderOffset: Number(reminderOffset.value)||60 };
+        if(!data.title) return alert('Enter a title'); saveEdit(id,data); return;
+      }
+      addNew();
+    });
+
+    window.addEventListener('keydown',(e)=>{ if(e.key==='/' && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA'){ e.preventDefault(); title.focus(); } });
+
+    clearCompleted.addEventListener('click', clearCompleted);
+
+    // ---------- Init ----------
+    render();
+    // attempt to schedule notifications if permission exists
+    if('Notification' in window && Notification.permission === 'granted') scheduleReminders();
+
+    // expose for debugging
+    window.__planner = {goals, save, render};
+  </script>
+</body>
+</html>
